@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir C:UserssamibDevBudgetX *)",
+      "PowerShell(Remove-Item *)",
+      "PowerShell(npm install *)",
+      "PowerShell(npx --yes shadcn@latest init -d --base-color neutral)",
+      "PowerShell(npx --yes shadcn@latest init -d)",
+      "PowerShell(npx --yes shadcn@latest add card input label select dialog tabs badge progress switch textarea separator)",
+      "PowerShell(npx drizzle-kit generate --name init)",
+      "PowerShell(npm run *)",
+      "PowerShell(npm start *)",
+      "PowerShell(Start-Sleep -Seconds 4; \\(Invoke-WebRequest -UseBasicParsing http://localhost:3000/dashboard\\).StatusCode; \\(Invoke-WebRequest -UseBasicParsing http://localhost:3000/manifest.json\\).StatusCode; \\(Invoke-WebRequest -UseBasicParsing http://localhost:3000/sw.js\\).StatusCode)",
+      "PowerShell(Stop-Process *)",
+      "PowerShell(git *)"
+    ]
+  }
+}
