@@ -1,12 +1,13 @@
 {
   "name": "BudgetX",
   "short_name": "BudgetX",
-  "description": "Gestion financière personnelle — 100% privée, hors ligne",
+  "description": "Gestion financière personnelle — CHF",
   "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#0a0a0a",
-  "theme_color": "#0a0a0a",
-  "lang": "fr",
+  "background_color": "#16161d",
+  "theme_color": "#16161d",
+  "orientation": "portrait",
+  "lang": "fr-CH",
   "icons": [
     {
       "src": "/icons/icon-192.png",

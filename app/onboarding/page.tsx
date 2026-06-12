@@ -1,84 +1,68 @@
-"use client";
-
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
 import { Wallet } from "lucide-react";
+import { auth } from "@/lib/auth";
+import { getProfile } from "@/db/queries";
+import { completeOnboarding } from "@/lib/actions/profile-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
-import { getDb } from "@/db/client";
-import * as schema from "@/db/schema";
 
-export default function OnboardingPage() {
-  const router = useRouter();
-  const [balance, setBalance] = useState("");
-  const [salary, setSalary] = useState("");
-  const [saving, setSaving] = useState(false);
+export const metadata = { title: "Bienvenue — BudgetX" };
 
-  const valid = balance !== "" && salary !== "";
-
-  const submit = async () => {
-    if (!valid || saving) return;
-    setSaving(true);
-    const db = await getDb();
-    await db
-      .update(schema.profile)
-      .set({
-        initialBalance: String(parseFloat(balance) || 0),
-        monthlySalary: String(parseFloat(salary) || 0),
-        onboardingDone: true,
-      })
-      .where(eq(schema.profile.id, "default"));
-    router.replace("/dashboard");
-  };
+export default async function OnboardingPage() {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+  const profile = await getProfile(session.user.id);
+  if (profile?.onboardingDone) redirect("/dashboard");
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-8 px-6 py-12">
-      <div className="flex flex-col items-center gap-3 text-center">
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-          <Wallet className="size-8" />
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-6 py-10">
+      <div className="space-y-6">
+        <div className="text-center">
+          <div className="mx-auto mb-3 flex size-14 items-center justify-center rounded-2xl bg-primary/15">
+            <Wallet className="size-7 text-primary" />
+          </div>
+          <h1 className="text-2xl font-bold">Bienvenue sur BudgetX</h1>
+          <p className="text-sm text-muted-foreground">
+            Deux informations pour démarrer votre suivi financier.
+          </p>
         </div>
-        <h1 className="text-3xl font-bold tracking-tight">BudgetX</h1>
-        <p className="text-sm text-muted-foreground">
-          Vos finances personnelles, 100% privées et hors ligne.
-          <br />
-          Deux informations pour commencer :
-        </p>
-      </div>
 
-      <Card className="w-full max-w-sm">
-        <CardContent className="space-y-5 pt-2">
-          <div className="space-y-2">
-            <Label htmlFor="ob-balance">Solde bancaire actuel (CHF)</Label>
+        <form action={completeOnboarding} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="initialBalance">
+              Solde bancaire actuel (CHF)
+            </Label>
             <Input
-              id="ob-balance"
+              id="initialBalance"
+              name="initialBalance"
               type="number"
-              inputMode="decimal"
               step="0.05"
-              placeholder="ex : 2'500.00"
-              value={balance}
-              onChange={(e) => setBalance(e.target.value)}
+              inputMode="decimal"
+              placeholder="0.00"
+              required
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="ob-salary">Salaire mensuel net (CHF)</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="monthlySalary">
+              Salaire mensuel net (CHF)
+            </Label>
             <Input
-              id="ob-salary"
+              id="monthlySalary"
+              name="monthlySalary"
               type="number"
-              inputMode="decimal"
               step="0.05"
-              placeholder="ex : 5'000.00"
-              value={salary}
-              onChange={(e) => setSalary(e.target.value)}
+              min="0"
+              inputMode="decimal"
+              placeholder="0.00"
+              required
             />
           </div>
-          <Button className="w-full" disabled={!valid || saving} onClick={submit}>
-            {saving ? "Enregistrement…" : "Commencer"}
+          <Button type="submit" className="w-full" size="lg">
+            Commencer
           </Button>
-        </CardContent>
-      </Card>
-    </div>
+        </form>
+      </div>
+    </main>
   );
 }

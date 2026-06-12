@@ -12,7 +12,17 @@
       "PowerShell(npm start *)",
       "PowerShell(Start-Sleep -Seconds 4; \\(Invoke-WebRequest -UseBasicParsing http://localhost:3000/dashboard\\).StatusCode; \\(Invoke-WebRequest -UseBasicParsing http://localhost:3000/manifest.json\\).StatusCode; \\(Invoke-WebRequest -UseBasicParsing http://localhost:3000/sw.js\\).StatusCode)",
       "PowerShell(Stop-Process *)",
-      "PowerShell(git *)"
+      "PowerShell(git *)",
+      "PowerShell(gh auth *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(npx drizzle-kit *)",
+      "Bash(curl -s -o /dev/null -w \"/ -> %{http_code} \\(redir: %{redirect_url}\\)\\\\n\" http://localhost:3100/)",
+      "Bash(curl -s -o /dev/null -w \"/login -> %{http_code}\\\\n\" http://localhost:3100/login)",
+      "Bash(curl -s -o /dev/null -w \"/dashboard -> %{http_code} \\(redir: %{redirect_url}\\)\\\\n\" http://localhost:3100/dashboard)",
+      "Bash(curl -s -o /dev/null -w \"/manifest.json -> %{http_code}\\\\n\" http://localhost:3100/manifest.json)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'Rebuild BudgetX: Next.js 15 + Neon/Drizzle + Auth.js v5 PWA per CONTEXT.md *)"
     ]
   }
 }

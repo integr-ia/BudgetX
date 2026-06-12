@@ -1,21 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { AppShell } from "@/components/layout/AppShell";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "BudgetX",
-  description: "Gestion financière personnelle — 100% privée, hors ligne",
+  description: "Gestion financière personnelle — CHF",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -25,23 +13,32 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0a0a",
+  themeColor: "#10b981",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
 };
 
+const themeScript = `
+try {
+  const t = localStorage.getItem("budgetx-theme");
+  if (t === "light") document.documentElement.classList.remove("dark");
+  else document.documentElement.classList.add("dark");
+} catch (e) {}
+`;
+
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="fr" className="dark" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <AppShell>{children}</AppShell>
-      </body>
+    <html lang="fr-CH" className="dark" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
+      <body className="min-h-dvh antialiased">{children}</body>
     </html>
   );
 }
