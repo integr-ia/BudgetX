@@ -120,6 +120,20 @@ export const investments = pgTable("investments", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+export const investmentWithdrawals = pgTable("investment_withdrawals", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  investmentId: text("investment_id")
+    .notNull()
+    .references(() => investments.id, { onDelete: "cascade" }),
+  amount: numeric("amount").notNull(),
+  date: date("date").notNull(),
+  note: text("note"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const savingsProjects = pgTable("savings_projects", {
   id: text("id").primaryKey(),
   userId: text("user_id")
@@ -157,5 +171,6 @@ export type Debt = typeof debts.$inferSelect;
 export type DebtPayment = typeof debtPayments.$inferSelect;
 export type Investment = typeof investments.$inferSelect;
 export type InvestmentCategory = typeof investmentCategories.$inferSelect;
+export type InvestmentWithdrawal = typeof investmentWithdrawals.$inferSelect;
 export type SavingsProject = typeof savingsProjects.$inferSelect;
 export type SavingsContribution = typeof savingsContributions.$inferSelect;

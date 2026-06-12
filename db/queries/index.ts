@@ -15,6 +15,7 @@ import {
   debtPayments,
   investments,
   investmentCategories,
+  investmentWithdrawals,
   savingsProjects,
   savingsContributions,
 } from "@/db/schema";
@@ -79,6 +80,14 @@ export async function getInvestments(userId: string) {
     )
     .where(eq(investments.userId, userId))
     .orderBy(desc(investments.investmentDate));
+}
+
+export async function getInvestmentWithdrawals(userId: string) {
+  return db
+    .select()
+    .from(investmentWithdrawals)
+    .where(eq(investmentWithdrawals.userId, userId))
+    .orderBy(desc(investmentWithdrawals.date), desc(investmentWithdrawals.createdAt));
 }
 
 export async function getInvestmentCategories(userId: string) {

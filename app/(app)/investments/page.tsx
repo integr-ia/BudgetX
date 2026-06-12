@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { getInvestments, getInvestmentCategories } from "@/db/queries";
+import {
+  getInvestments,
+  getInvestmentCategories,
+  getInvestmentWithdrawals,
+} from "@/db/queries";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { InvestmentsClient } from "./InvestmentsClient";
 
@@ -11,15 +15,20 @@ export default async function InvestmentsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const [rows, categories] = await Promise.all([
+  const [rows, categories, withdrawals] = await Promise.all([
     getInvestments(session.user.id),
     getInvestmentCategories(session.user.id),
+    getInvestmentWithdrawals(session.user.id),
   ]);
 
   return (
     <>
       <PageHeader title="Investissements" />
-      <InvestmentsClient rows={rows} categories={categories} />
+      <InvestmentsClient
+        rows={rows}
+        categories={categories}
+        withdrawals={withdrawals}
+      />
     </>
   );
 }

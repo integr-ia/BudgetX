@@ -1,12 +1,17 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
-import type { Investment, InvestmentCategory } from "@/db/schema";
+import { Banknote, Pencil, Plus, Trash2 } from "lucide-react";
+import type {
+  Investment,
+  InvestmentCategory,
+  InvestmentWithdrawal,
+} from "@/db/schema";
 import {
   createInvestment,
   updateInvestment,
   deleteInvestment,
+  divestInvestment,
   createInvestmentCategory,
 } from "@/lib/actions/investment-actions";
 import { formatCHF, toNumber } from "@/utils/currency";
@@ -25,12 +30,15 @@ type Row = { investment: Investment; category: InvestmentCategory };
 export function InvestmentsClient({
   rows,
   categories,
+  withdrawals,
 }: {
   rows: Row[];
   categories: InvestmentCategory[];
+  withdrawals: InvestmentWithdrawal[];
 }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Investment | null>(null);
+  const [divesting, setDivesting] = useState<Investment | null>(null);
   const [pending, startTransition] = useTransition();
 
   const totalInvested = rows.reduce(
@@ -75,6 +83,9 @@ export function InvestmentsClient({
         const invested = toNumber(inv.amountInvested);
         const current = inv.currentValue ? toNumber(inv.currentValue) : null;
         const delta = current !== null ? current - invested : null;
+        const invWithdrawals = withdrawals.filter(
+          (w) => w.investmentId === inv.id
+        );
         return (
           <Card key={inv.id}>
             <CardContent className="flex items-center justify-between gap-3 py-3">
@@ -121,6 +132,15 @@ export function InvestmentsClient({
                 <Button
                   variant="ghost"
                   size="icon"
+                  className="size-8"
+                  aria-label="Désinvestir"
+                  onClick={() => setDivesting(inv)}
+                >
+                  <Banknote className="size-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
                   className="size-8 text-destructive"
                   aria-label="Supprimer"
                   disabled={pending}
@@ -130,6 +150,27 @@ export function InvestmentsClient({
                 </Button>
               </div>
             </CardContent>
+            {invWithdrawals.length > 0 && (
+              <CardContent className="border-t pb-3 pt-2">
+                <p className="mb-1 text-[10px] font-medium uppercase text-muted-foreground">
+                  Retraits
+                </p>
+                {invWithdrawals.map((w) => (
+                  <p
+                    key={w.id}
+                    className="flex justify-between text-xs text-muted-foreground"
+                  >
+                    <span>
+                      {formatDate(w.date)}
+                      {w.note ? ` · ${w.note}` : ""}
+                    </span>
+                    <span className="text-destructive">
+                      −{formatCHF(toNumber(w.amount))}
+                    </span>
+                  </p>
+                ))}
+              </CardContent>
+            )}
           </Card>
         );
       })}
@@ -156,7 +197,88 @@ export function InvestmentsClient({
           />
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={!!divesting}
+        onOpenChange={(o) => {
+          if (!o) setDivesting(null);
+        }}
+      >
+        <DialogContent title="Désinvestir">
+          {divesting && (
+            <DivestForm
+              investment={divesting}
+              onDone={() => setDivesting(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function DivestForm({
+  investment,
+  onDone,
+}: {
+  investment: Investment;
+  onDone: () => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const current = toNumber(
+    investment.currentValue ?? investment.amountInvested
+  );
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    startTransition(async () => {
+      await divestInvestment(investment.id, fd);
+      onDone();
+    });
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        {investment.assetName} · valeur actuelle {formatCHF(current)}
+      </p>
+      <div className="space-y-1.5">
+        <Label htmlFor="d-amount">Montant à retirer (CHF)</Label>
+        <Input
+          id="d-amount"
+          name="amount"
+          type="number"
+          step="0.05"
+          min="0.05"
+          max={current}
+          inputMode="decimal"
+          defaultValue={current}
+          required
+        />
+        <p className="text-xs text-muted-foreground">
+          Le retrait est enregistré dans l&apos;historique ; le montant investi
+          est réduit proportionnellement.
+        </p>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="d-date">Date du retrait</Label>
+        <Input
+          id="d-date"
+          name="date"
+          type="date"
+          defaultValue={todayISO()}
+          required
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="d-note">Note (optionnel)</Label>
+        <Textarea id="d-note" name="note" rows={2} />
+      </div>
+      <Button type="submit" className="w-full" size="lg" disabled={pending}>
+        {pending ? "Retrait…" : "Désinvestir"}
+      </Button>
+    </form>
   );
 }
 
