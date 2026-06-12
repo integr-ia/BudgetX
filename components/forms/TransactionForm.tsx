@@ -94,17 +94,18 @@ export function TransactionForm({
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
+        <div className="min-w-0 space-y-1.5">
           <Label htmlFor="tx-date">Date</Label>
           <Input
             id="tx-date"
             name="date"
             type="date"
+            className="min-w-0 appearance-none"
             defaultValue={transaction?.date ?? todayISO()}
             required
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="min-w-0 space-y-1.5">
           <Label htmlFor="tx-recurrence">Récurrence</Label>
           <Select
             id="tx-recurrence"
