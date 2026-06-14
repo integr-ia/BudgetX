@@ -96,7 +96,7 @@ export function TransactionsClient({
               />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{category.name}</p>
-                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <p className="flex flex-wrap items-center gap-1.5 gap-y-1 text-xs text-muted-foreground">
                   {formatDate(t.date)}
                   {isFuture && (
                     <Badge variant="outline" className="gap-1">
@@ -114,7 +114,7 @@ export function TransactionsClient({
                 )}
               </div>
               <span
-                className={`text-sm font-semibold ${
+                className={`shrink-0 text-sm font-semibold ${
                   t.type === "income" ? "text-primary" : "text-destructive"
                 }`}
               >
