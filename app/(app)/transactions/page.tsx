@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { getTransactions, getCategories } from "@/db/queries";
+import { getTransactions, getCategories, getProfile } from "@/db/queries";
+import { toNumber } from "@/utils/currency";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { TransactionsClient } from "./TransactionsClient";
 
@@ -11,15 +12,20 @@ export default async function TransactionsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const [rows, categories] = await Promise.all([
+  const [rows, categories, profile] = await Promise.all([
     getTransactions(session.user.id),
     getCategories(session.user.id),
+    getProfile(session.user.id),
   ]);
 
   return (
     <>
       <PageHeader title="Transactions" />
-      <TransactionsClient rows={rows} categories={categories} />
+      <TransactionsClient
+        rows={rows}
+        categories={categories}
+        initialBalance={toNumber(profile?.initialBalance)}
+      />
     </>
   );
 }
