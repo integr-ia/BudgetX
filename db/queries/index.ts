@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, lte, notInArray, sql } from "drizzle-orm";
 import {
   addDays,
   endOfMonth,
@@ -110,12 +110,57 @@ export async function getSavingsProjects(userId: string) {
 
 const num = (v: string | null) => (v ? parseFloat(v) : 0);
 
+/**
+ * Identifiants des transactions "miroir" déjà comptabilisées via une autre
+ * table (remboursement de dette, versement d'épargne, investissement…), à
+ * exclure des sommes de `transactions` pour éviter un double comptage.
+ */
+async function getLinkedTransactionIds(userId: string): Promise<string[]> {
+  const [fromDebt, fromSavings, fromInvest, fromWithdrawals] =
+    await Promise.all([
+      db
+        .select({ id: debtPayments.transactionId })
+        .from(debtPayments)
+        .where(
+          and(eq(debtPayments.userId, userId), isNotNull(debtPayments.transactionId))
+        ),
+      db
+        .select({ id: savingsContributions.transactionId })
+        .from(savingsContributions)
+        .where(
+          and(
+            eq(savingsContributions.userId, userId),
+            isNotNull(savingsContributions.transactionId)
+          )
+        ),
+      db
+        .select({ id: investments.transactionId })
+        .from(investments)
+        .where(
+          and(eq(investments.userId, userId), isNotNull(investments.transactionId))
+        ),
+      db
+        .select({ id: investmentWithdrawals.transactionId })
+        .from(investmentWithdrawals)
+        .where(
+          and(
+            eq(investmentWithdrawals.userId, userId),
+            isNotNull(investmentWithdrawals.transactionId)
+          )
+        ),
+    ]);
+  return [...fromDebt, ...fromSavings, ...fromInvest, ...fromWithdrawals]
+    .map((r) => r.id)
+    .filter((id): id is string => !!id);
+}
+
 /** Somme des transactions réalisées (date <= aujourd'hui) sur une période, par type. */
 async function sumTransactions(
   userId: string,
   type: "expense" | "income",
   from: string,
-  to: string
+  to: string,
+  excludeIds: string[] = []
 ) {
   const [row] = await db
     .select({ total: sql<string>`COALESCE(SUM(${transactions.amount}), 0)` })
@@ -125,7 +170,8 @@ async function sumTransactions(
         eq(transactions.userId, userId),
         eq(transactions.type, type),
         gte(transactions.date, from),
-        lte(transactions.date, to)
+        lte(transactions.date, to),
+        excludeIds.length ? notInArray(transactions.id, excludeIds) : undefined
       )
     );
   return num(row?.total ?? "0");
@@ -165,6 +211,34 @@ async function sumSavingsContributions(
   return num(row?.total ?? "0");
 }
 
+async function sumInvested(userId: string, from: string, to: string) {
+  const [row] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${investments.amountInvested}), 0)` })
+    .from(investments)
+    .where(
+      and(
+        eq(investments.userId, userId),
+        gte(investments.investmentDate, from),
+        lte(investments.investmentDate, to)
+      )
+    );
+  return num(row?.total ?? "0");
+}
+
+async function sumInvestmentWithdrawals(userId: string, from: string, to: string) {
+  const [row] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${investmentWithdrawals.amount}), 0)` })
+    .from(investmentWithdrawals)
+    .where(
+      and(
+        eq(investmentWithdrawals.userId, userId),
+        gte(investmentWithdrawals.date, from),
+        lte(investmentWithdrawals.date, to)
+      )
+    );
+  return num(row?.total ?? "0");
+}
+
 export interface MonthSummary {
   income: number;
   expenses: number;
@@ -179,35 +253,61 @@ export async function getMonthSummary(userId: string): Promise<MonthSummary> {
   const now = new Date();
   const from = iso(startOfMonth(now));
   const today = iso(now); // exclut les transactions futures du réalisé
+  const excludeIds = await getLinkedTransactionIds(userId);
 
-  const [income, expenses, debtRepayments, savingsContributed] =
-    await Promise.all([
-      sumTransactions(userId, "income", from, today),
-      sumTransactions(userId, "expense", from, today),
-      sumDebtPayments(userId, from, today),
-      sumSavingsContributions(userId, from, today),
-    ]);
+  const [
+    income,
+    expenses,
+    debtRepayments,
+    savingsContributed,
+    invested,
+    withdrawn,
+  ] = await Promise.all([
+    sumTransactions(userId, "income", from, today, excludeIds),
+    sumTransactions(userId, "expense", from, today, excludeIds),
+    sumDebtPayments(userId, from, today),
+    sumSavingsContributions(userId, from, today),
+    sumInvested(userId, from, today),
+    sumInvestmentWithdrawals(userId, from, today),
+  ]);
 
   return {
     income,
     expenses,
     debtRepayments,
-    netBalance: income - expenses - debtRepayments,
+    netBalance:
+      income - expenses - debtRepayments - savingsContributed - (invested - withdrawn),
     savingsContributed,
     savingsRate: income > 0 ? (savingsContributed / income) * 100 : 0,
   };
 }
 
-/** Solde réel (règle n°1) = initial_balance + Σ revenus − Σ dépenses − Σ remboursements. */
+/**
+ * Solde réel (règle n°1) = initial_balance + Σ revenus − Σ dépenses
+ * − Σ remboursements de dette − Σ versements d'épargne
+ * − (Σ montants investis − Σ retraits d'investissement).
+ */
 export async function getRealBalance(userId: string): Promise<number> {
   const profile = await getProfile(userId);
   const today = iso(new Date());
-  const [income, expenses, repayments] = await Promise.all([
-    sumTransactions(userId, "income", "1970-01-01", today),
-    sumTransactions(userId, "expense", "1970-01-01", today),
-    sumDebtPayments(userId, "1970-01-01", today),
-  ]);
-  return num(profile?.initialBalance ?? "0") + income - expenses - repayments;
+  const excludeIds = await getLinkedTransactionIds(userId);
+  const [income, expenses, repayments, savingsContributed, invested, withdrawn] =
+    await Promise.all([
+      sumTransactions(userId, "income", "1970-01-01", today, excludeIds),
+      sumTransactions(userId, "expense", "1970-01-01", today, excludeIds),
+      sumDebtPayments(userId, "1970-01-01", today),
+      sumSavingsContributions(userId, "1970-01-01", today),
+      sumInvested(userId, "1970-01-01", today),
+      sumInvestmentWithdrawals(userId, "1970-01-01", today),
+    ]);
+  return (
+    num(profile?.initialBalance ?? "0") +
+    income -
+    expenses -
+    repayments -
+    savingsContributed -
+    (invested - withdrawn)
+  );
 }
 
 export async function getActiveDebtTotals(userId: string) {

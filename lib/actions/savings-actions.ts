@@ -3,8 +3,8 @@
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { savingsProjects, savingsContributions } from "@/db/schema";
-import { requireUserId } from "./helpers";
+import { savingsProjects, savingsContributions, transactions } from "@/db/schema";
+import { getOrCreateMirrorCategory, isChecked, requireUserId } from "./helpers";
 
 function revalidateAll() {
   revalidatePath("/savings");
@@ -54,14 +54,37 @@ export async function addSavingsContribution(formData: FormData) {
   const userId = await requireUserId();
   const projectId = String(formData.get("projectId"));
   const amount = String(formData.get("amount"));
+  const date = String(formData.get("date"));
+
+  const [project] = await db
+    .select()
+    .from(savingsProjects)
+    .where(and(eq(savingsProjects.id, projectId), eq(savingsProjects.userId, userId)))
+    .limit(1);
+
+  let transactionId: string | null = null;
+  if (isChecked(formData, "addToTransactions")) {
+    transactionId = crypto.randomUUID();
+    const categoryId = await getOrCreateMirrorCategory(userId, "Épargne", "expense");
+    await db.insert(transactions).values({
+      id: transactionId,
+      userId,
+      type: "expense",
+      amount,
+      categoryId,
+      date,
+      note: `Versement épargne : ${project?.name ?? ""}`,
+    });
+  }
 
   await db.insert(savingsContributions).values({
     id: crypto.randomUUID(),
     userId,
     projectId,
     amount,
-    date: String(formData.get("date")),
+    date,
     note: String(formData.get("note") ?? "") || null,
+    transactionId,
   });
 
   await db

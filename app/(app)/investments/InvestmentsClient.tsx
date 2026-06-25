@@ -275,6 +275,14 @@ function DivestForm({
         <Label htmlFor="d-note">Note (optionnel)</Label>
         <Textarea id="d-note" name="note" rows={2} />
       </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          name="addToTransactions"
+          className="h-4 w-4 rounded border-input"
+        />
+        Ajouter aux transactions
+      </label>
       <Button type="submit" className="w-full" size="lg" disabled={pending}>
         {pending ? "Retrait…" : "Désinvestir"}
       </Button>
@@ -388,6 +396,16 @@ function InvestmentForm({
         <Label htmlFor="i-note">Note (optionnel)</Label>
         <Textarea id="i-note" name="note" defaultValue={investment?.note ?? ""} rows={2} />
       </div>
+      {!investment && (
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="addToTransactions"
+            className="h-4 w-4 rounded border-input"
+          />
+          Ajouter aux transactions
+        </label>
+      )}
       <Button type="submit" className="w-full" size="lg" disabled={pending}>
         {pending ? "Enregistrement…" : investment ? "Modifier" : "Ajouter"}
       </Button>

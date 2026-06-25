@@ -360,6 +360,14 @@ function PaymentForm({ debt, onDone }: { debt: Debt; onDone: () => void }) {
         <Label htmlFor="p-note">Note (optionnel)</Label>
         <Textarea id="p-note" name="note" rows={2} />
       </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          name="addToTransactions"
+          className="h-4 w-4 rounded border-input"
+        />
+        Ajouter aux transactions
+      </label>
       <Button type="submit" className="w-full" size="lg" disabled={pending}>
         {pending ? "Enregistrement…" : "Enregistrer le remboursement"}
       </Button>

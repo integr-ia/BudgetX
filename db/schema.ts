@@ -88,6 +88,7 @@ export const debtPayments = pgTable("debt_payments", {
   amount: numeric("amount").notNull(),
   date: date("date").notNull(),
   note: text("note"),
+  transactionId: text("transaction_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -116,6 +117,7 @@ export const investments = pgTable("investments", {
   currentValue: numeric("current_value"),
   investmentDate: date("investment_date").notNull(),
   note: text("note"),
+  transactionId: text("transaction_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -131,6 +133,7 @@ export const investmentWithdrawals = pgTable("investment_withdrawals", {
   amount: numeric("amount").notNull(),
   date: date("date").notNull(),
   note: text("note"),
+  transactionId: text("transaction_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

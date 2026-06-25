@@ -3,8 +3,8 @@
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { debts, debtPayments } from "@/db/schema";
-import { requireUserId } from "./helpers";
+import { debts, debtPayments, transactions } from "@/db/schema";
+import { getOrCreateMirrorCategory, isChecked, requireUserId } from "./helpers";
 
 function revalidateAll() {
   revalidatePath("/debts");
@@ -73,13 +73,34 @@ export async function addDebtPayment(formData: FormData) {
     .limit(1);
   if (!debt) throw new Error("Dette introuvable");
 
+  const date = String(formData.get("date"));
+  let transactionId: string | null = null;
+  if (isChecked(formData, "addToTransactions")) {
+    transactionId = crypto.randomUUID();
+    const categoryId = await getOrCreateMirrorCategory(
+      userId,
+      "Remboursement de dette",
+      "expense"
+    );
+    await db.insert(transactions).values({
+      id: transactionId,
+      userId,
+      type: "expense",
+      amount,
+      categoryId,
+      date,
+      note: `Remboursement dette : ${debt.name}`,
+    });
+  }
+
   await db.insert(debtPayments).values({
     id: crypto.randomUUID(),
     userId,
     debtId,
     amount,
-    date: String(formData.get("date")),
+    date,
     note: String(formData.get("note") ?? "") || null,
+    transactionId,
   });
 
   const newPaid = parseFloat(debt.paidAmount) + parseFloat(amount);
