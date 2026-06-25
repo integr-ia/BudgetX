@@ -22,6 +22,14 @@ import {
 
 const iso = (d: Date) => format(d, "yyyy-MM-dd");
 
+/**
+ * Instant de mise en prod de la déduction auto des épargnes/investissements
+ * (commit d613a14). `initialBalance` intégrait déjà tout l'historique
+ * antérieur : seuls les enregistrements créés après ce rollout doivent être
+ * déduits du solde, sous peine de double comptage.
+ */
+const BALANCE_TRACKING_ROLLOUT_AT = new Date("2026-06-25T07:44:08+02:00");
+
 export async function getProfile(userId: string) {
   const [profile] = await db
     .select()
@@ -205,7 +213,8 @@ async function sumSavingsContributions(
       and(
         eq(savingsContributions.userId, userId),
         gte(savingsContributions.date, from),
-        lte(savingsContributions.date, to)
+        lte(savingsContributions.date, to),
+        gte(savingsContributions.createdAt, BALANCE_TRACKING_ROLLOUT_AT)
       )
     );
   return num(row?.total ?? "0");
@@ -219,7 +228,8 @@ async function sumInvested(userId: string, from: string, to: string) {
       and(
         eq(investments.userId, userId),
         gte(investments.investmentDate, from),
-        lte(investments.investmentDate, to)
+        lte(investments.investmentDate, to),
+        gte(investments.createdAt, BALANCE_TRACKING_ROLLOUT_AT)
       )
     );
   return num(row?.total ?? "0");
@@ -233,7 +243,8 @@ async function sumInvestmentWithdrawals(userId: string, from: string, to: string
       and(
         eq(investmentWithdrawals.userId, userId),
         gte(investmentWithdrawals.date, from),
-        lte(investmentWithdrawals.date, to)
+        lte(investmentWithdrawals.date, to),
+        gte(investmentWithdrawals.createdAt, BALANCE_TRACKING_ROLLOUT_AT)
       )
     );
   return num(row?.total ?? "0");
