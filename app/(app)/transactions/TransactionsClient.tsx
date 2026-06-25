@@ -52,7 +52,7 @@ export function TransactionsClient({
   );
   const today = todayISO();
 
-  // Décompte : ordre chronologique croissant + solde courant à partir du solde réel de départ.
+  // Décompte : solde courant calculé chronologiquement, puis affiché du plus récent au plus ancien.
   const ledger = useMemo(() => {
     const ascending = [...rows].sort((a, b) => {
       if (a.transaction.date !== b.transaction.date)
@@ -60,11 +60,12 @@ export function TransactionsClient({
       return a.transaction.createdAt < b.transaction.createdAt ? -1 : 1;
     });
     let running = initialBalance;
-    return ascending.map((row) => {
+    const withBalance = ascending.map((row) => {
       const amount = toNumber(row.transaction.amount);
       running += row.transaction.type === "income" ? amount : -amount;
       return { ...row, balance: running };
     });
+    return withBalance.reverse();
   }, [rows, initialBalance]);
 
   return (
@@ -221,6 +222,9 @@ export function TransactionsClient({
                         </Badge>
                       )}
                     </p>
+                    {t.note && (
+                      <p className="truncate text-xs text-muted-foreground">{t.note}</p>
+                    )}
                   </div>
                   <div className="shrink-0 text-right">
                     <p
