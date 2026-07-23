@@ -1,7 +1,16 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CalendarClock, List, Pencil, Receipt, Settings2, Trash2 } from "lucide-react";
+import { addMonths, addWeeks, addYears, parseISO } from "date-fns";
+import {
+  CalendarClock,
+  List,
+  Pencil,
+  Receipt,
+  Repeat,
+  Settings2,
+  Trash2,
+} from "lucide-react";
 import type { Category, Transaction } from "@/db/schema";
 import {
   deleteTransaction,
@@ -28,6 +37,19 @@ const recurrenceLabels: Record<string, string> = {
   yearly: "Annuel",
 };
 
+const RECURRENCE_STEP: Record<string, (d: Date) => Date> = {
+  weekly: (d) => addWeeks(d, 1),
+  monthly: (d) => addMonths(d, 1),
+  yearly: (d) => addYears(d, 1),
+};
+
+// Équivalent mensuel approximatif pour comparer des récurrences différentes.
+const MONTHLY_FACTOR: Record<string, number> = {
+  weekly: 52 / 12,
+  monthly: 1,
+  yearly: 1 / 12,
+};
+
 export function TransactionsClient({
   rows,
   categories,
@@ -38,7 +60,7 @@ export function TransactionsClient({
   initialBalance: number;
 }) {
   const [filter, setFilter] = useState<"all" | "expense" | "income">("all");
-  const [view, setView] = useState<"list" | "ledger">("list");
+  const [view, setView] = useState<"list" | "ledger" | "subscriptions">("list");
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [catManagerOpen, setCatManagerOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -68,14 +90,52 @@ export function TransactionsClient({
     return withBalance.reverse();
   }, [rows, initialBalance]);
 
+  // Une carte par série récurrente active : la dernière occurrence connue,
+  // avec sa prochaine échéance calculée à partir de sa fréquence.
+  const subscriptions = useMemo(() => {
+    const latestBySeries = new Map<string, Row>();
+    for (const row of rows) {
+      const { transaction: t } = row;
+      if (!t.isRecurring || !t.recurrence) continue;
+      const key = t.seriesId ?? t.id;
+      const current = latestBySeries.get(key);
+      if (!current || t.date > current.transaction.date) {
+        latestBySeries.set(key, row);
+      }
+    }
+    return Array.from(latestBySeries.values())
+      .map((row) => {
+        const t = row.transaction;
+        const recurrence = t.recurrence as string;
+        const step = RECURRENCE_STEP[recurrence];
+        const nextDue = step ? step(parseISO(t.date)) : null;
+        return { ...row, nextDue };
+      })
+      .sort((a, b) => {
+        if (!a.nextDue || !b.nextDue) return 0;
+        return a.nextDue.getTime() - b.nextDue.getTime();
+      });
+  }, [rows]);
+
+  const monthlySubscriptionTotal = useMemo(
+    () =>
+      subscriptions
+        .filter((s) => s.transaction.type === "expense")
+        .reduce((sum, s) => {
+          const factor = MONTHLY_FACTOR[s.transaction.recurrence as string] ?? 0;
+          return sum + toNumber(s.transaction.amount) * factor;
+        }, 0),
+    [subscriptions]
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <div className="flex rounded-lg border p-0.5">
+        <div className="flex overflow-x-auto rounded-lg border p-0.5">
           <Button
             variant={view === "list" ? "default" : "ghost"}
             size="sm"
-            className="gap-1.5"
+            className="shrink-0 gap-1.5"
             onClick={() => setView("list")}
           >
             <List className="size-3.5" /> Liste
@@ -83,16 +143,24 @@ export function TransactionsClient({
           <Button
             variant={view === "ledger" ? "default" : "ghost"}
             size="sm"
-            className="gap-1.5"
+            className="shrink-0 gap-1.5"
             onClick={() => setView("ledger")}
           >
             <Receipt className="size-3.5" /> Décompte
+          </Button>
+          <Button
+            variant={view === "subscriptions" ? "default" : "ghost"}
+            size="sm"
+            className="shrink-0 gap-1.5"
+            onClick={() => setView("subscriptions")}
+          >
+            <Repeat className="size-3.5" /> Abonnements
           </Button>
         </div>
         <Button
           variant="ghost"
           size="icon"
-          className="ml-auto"
+          className="ml-auto shrink-0"
           aria-label="Gérer les catégories"
           onClick={() => setCatManagerOpen(true)}
         >
@@ -191,7 +259,7 @@ export function TransactionsClient({
             );
           })}
         </div>
-      ) : (
+      ) : view === "ledger" ? (
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">
             Solde de départ : {formatCHF(initialBalance)}
@@ -243,6 +311,56 @@ export function TransactionsClient({
               </Card>
             );
           })}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <Card>
+            <CardContent className="flex items-center justify-between gap-3 py-3">
+              <p className="text-sm text-muted-foreground">
+                Coût mensuel total des abonnements
+              </p>
+              <p className="text-sm font-semibold text-destructive">
+                {formatCHF(monthlySubscriptionTotal)}
+              </p>
+            </CardContent>
+          </Card>
+
+          {subscriptions.length === 0 && (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Aucun abonnement. Activez une récurrence sur une transaction pour
+              la voir apparaître ici.
+            </p>
+          )}
+
+          {subscriptions.map(({ transaction: t, category, nextDue }) => (
+            <Card key={t.seriesId ?? t.id}>
+              <CardContent className="flex items-center justify-between gap-3 py-3">
+                <div
+                  className="size-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: category.color ?? "#64748b" }}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">
+                    {t.note || category.name}
+                  </p>
+                  <p className="flex flex-wrap items-center gap-1.5 gap-y-1 text-xs text-muted-foreground">
+                    <Badge variant="secondary">
+                      {recurrenceLabels[t.recurrence ?? ""] ?? t.recurrence}
+                    </Badge>
+                    {nextDue && <span>Prochaine échéance : {formatDate(nextDue)}</span>}
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 text-sm font-semibold ${
+                    t.type === "income" ? "text-primary" : "text-destructive"
+                  }`}
+                >
+                  {t.type === "income" ? "+" : "−"}
+                  {formatCHF(t.amount)}
+                </span>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
 

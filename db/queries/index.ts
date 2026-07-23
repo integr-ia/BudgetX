@@ -1,8 +1,12 @@
-import { and, asc, desc, eq, gte, isNotNull, lte, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, isNull, lte, notInArray, sql } from "drizzle-orm";
 import {
   addDays,
+  addMonths,
+  addWeeks,
+  addYears,
   endOfMonth,
   format,
+  parseISO,
   startOfMonth,
   subMonths,
 } from "date-fns";
@@ -57,6 +61,85 @@ export async function getTransactions(userId: string) {
     .innerJoin(categories, eq(transactions.categoryId, categories.id))
     .where(eq(transactions.userId, userId))
     .orderBy(desc(transactions.date), desc(transactions.createdAt));
+}
+
+const RECURRENCE_STEP: Record<string, (d: Date) => Date> = {
+  weekly: (d) => addWeeks(d, 1),
+  monthly: (d) => addMonths(d, 1),
+  yearly: (d) => addYears(d, 1),
+};
+
+/**
+ * Génère les occurrences manquantes des transactions récurrentes jusqu'à
+ * aujourd'hui (ex: un abonnement mensuel du 21.06 doit produire une
+ * occurrence le 21.07 s'il n'y a eu aucune saisie manuelle entre-temps).
+ * Appelé au chargement des pages qui affichent transactions/soldes,
+ * faute de tâche planifiée (cron) dans ce projet.
+ */
+export async function materializeRecurringTransactions(
+  userId: string
+): Promise<void> {
+  const today = iso(new Date());
+
+  // Rattrape les transactions récurrentes créées avant l'introduction de
+  // seriesId : elles deviennent la tête de leur propre série.
+  await db
+    .update(transactions)
+    .set({ seriesId: sql`${transactions.id}` })
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        eq(transactions.isRecurring, true),
+        isNotNull(transactions.recurrence),
+        isNull(transactions.seriesId)
+      )
+    );
+
+  const seriesRows = await db
+    .select()
+    .from(transactions)
+    .where(and(eq(transactions.userId, userId), isNotNull(transactions.seriesId)))
+    .orderBy(desc(transactions.date));
+
+  const latestBySeries = new Map<string, typeof seriesRows[number]>();
+  for (const row of seriesRows) {
+    const key = row.seriesId as string;
+    if (!latestBySeries.has(key)) latestBySeries.set(key, row);
+  }
+
+  const toInsert: (typeof transactions.$inferInsert)[] = [];
+
+  for (const latest of latestBySeries.values()) {
+    if (!latest.isRecurring || !latest.recurrence) continue;
+    const step = RECURRENCE_STEP[latest.recurrence];
+    if (!step) continue;
+
+    let cursor = parseISO(latest.date);
+    while (true) {
+      cursor = step(cursor);
+      const nextDate = iso(cursor);
+      if (nextDate > today) break;
+      if (latest.recurrenceEnd && nextDate > latest.recurrenceEnd) break;
+
+      toInsert.push({
+        id: crypto.randomUUID(),
+        userId,
+        type: latest.type,
+        amount: latest.amount,
+        categoryId: latest.categoryId,
+        date: nextDate,
+        note: latest.note,
+        isRecurring: true,
+        recurrence: latest.recurrence,
+        recurrenceEnd: latest.recurrenceEnd,
+        seriesId: latest.seriesId,
+      });
+    }
+  }
+
+  if (toInsert.length > 0) {
+    await db.insert(transactions).values(toInsert);
+  }
 }
 
 export async function getDebts(userId: string) {

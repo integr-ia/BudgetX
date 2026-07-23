@@ -14,6 +14,7 @@ import {
   getRealBalance,
   getActiveDebtTotals,
   getUpcoming,
+  materializeRecurringTransactions,
 } from "@/db/queries";
 import { formatCHF, toNumber } from "@/utils/currency";
 import { formatDate, formatMonth } from "@/utils/dates";
@@ -29,6 +30,8 @@ export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   const userId = session.user.id;
+
+  await materializeRecurringTransactions(userId);
 
   const [profile, summary, realBalance, debtTotals, upcoming] =
     await Promise.all([

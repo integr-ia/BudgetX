@@ -15,18 +15,22 @@ function revalidateAll() {
 export async function createTransaction(formData: FormData) {
   const userId = await requireUserId();
   const recurrence = String(formData.get("recurrence") ?? "");
+  const isRecurring = !!recurrence && recurrence !== "none";
+  const id = crypto.randomUUID();
 
   await db.insert(transactions).values({
-    id: crypto.randomUUID(),
+    id,
     userId,
     type: String(formData.get("type")),
     amount: String(formData.get("amount")),
     categoryId: String(formData.get("categoryId")),
     date: String(formData.get("date")),
     note: String(formData.get("note") ?? "") || null,
-    isRecurring: !!recurrence && recurrence !== "none",
-    recurrence: recurrence && recurrence !== "none" ? recurrence : null,
+    isRecurring,
+    recurrence: isRecurring ? recurrence : null,
     recurrenceEnd: String(formData.get("recurrenceEnd") ?? "") || null,
+    // La transaction d'origine est la tête de sa propre série d'occurrences.
+    seriesId: isRecurring ? id : null,
   });
   revalidateAll();
 }
@@ -34,6 +38,13 @@ export async function createTransaction(formData: FormData) {
 export async function updateTransaction(id: string, formData: FormData) {
   const userId = await requireUserId();
   const recurrence = String(formData.get("recurrence") ?? "");
+  const isRecurring = !!recurrence && recurrence !== "none";
+
+  const [existing] = await db
+    .select({ seriesId: transactions.seriesId })
+    .from(transactions)
+    .where(and(eq(transactions.id, id), eq(transactions.userId, userId)))
+    .limit(1);
 
   await db
     .update(transactions)
@@ -43,9 +54,12 @@ export async function updateTransaction(id: string, formData: FormData) {
       categoryId: String(formData.get("categoryId")),
       date: String(formData.get("date")),
       note: String(formData.get("note") ?? "") || null,
-      isRecurring: !!recurrence && recurrence !== "none",
-      recurrence: recurrence && recurrence !== "none" ? recurrence : null,
+      isRecurring,
+      recurrence: isRecurring ? recurrence : null,
       recurrenceEnd: String(formData.get("recurrenceEnd") ?? "") || null,
+      // Rattache à une série existante, ou en démarre une nouvelle si la
+      // récurrence vient d'être activée sur une transaction qui n'en avait pas.
+      seriesId: isRecurring ? existing?.seriesId ?? id : existing?.seriesId ?? null,
       updatedAt: new Date(),
     })
     .where(and(eq(transactions.id, id), eq(transactions.userId, userId)));

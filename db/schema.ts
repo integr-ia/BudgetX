@@ -54,6 +54,9 @@ export const transactions = pgTable("transactions", {
   isRecurring: boolean("is_recurring").default(false),
   recurrence: text("recurrence"), // 'weekly' | 'monthly' | 'yearly' | NULL
   recurrenceEnd: date("recurrence_end"),
+  // Regroupe toutes les occurrences générées d'un même abonnement récurrent
+  // (vaut l'id de la transaction d'origine de la série, NULL si non récurrente).
+  seriesId: text("series_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
