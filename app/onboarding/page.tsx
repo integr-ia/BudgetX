@@ -58,6 +58,20 @@ export default async function OnboardingPage() {
               required
             />
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="salaryDay">
+              Jour de réception du salaire (optionnel)
+            </Label>
+            <Input
+              id="salaryDay"
+              name="salaryDay"
+              type="number"
+              min="1"
+              max="31"
+              step="1"
+              placeholder="ex : 25"
+            />
+          </div>
           <Button type="submit" className="w-full" size="lg">
             Commencer
           </Button>

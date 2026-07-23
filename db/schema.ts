@@ -4,6 +4,7 @@ import {
   numeric,
   boolean,
   date,
+  integer,
   timestamp,
 } from "drizzle-orm/pg-core";
 
@@ -22,6 +23,8 @@ export const profiles = pgTable("profiles", {
     .references(() => users.id, { onDelete: "cascade" }),
   initialBalance: numeric("initial_balance").notNull().default("0"),
   monthlySalary: numeric("monthly_salary").notNull().default("0"),
+  // Jour du mois (1-31) de réception du salaire, utilisé pour le solde projeté.
+  salaryDay: integer("salary_day"),
   onboardingDone: boolean("onboarding_done").default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

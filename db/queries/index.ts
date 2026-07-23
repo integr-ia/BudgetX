@@ -6,6 +6,7 @@ import {
   addYears,
   endOfMonth,
   format,
+  getDaysInMonth,
   parseISO,
   startOfMonth,
   subMonths,
@@ -420,12 +421,13 @@ export async function getActiveDebtTotals(userId: string) {
 }
 
 /**
- * Prochaine échéance (hors du réel déjà matérialisé) de chaque abonnement
- * actif, projetée depuis sa dernière occurrence connue. Utilisé pour que les
- * abonnements à venir apparaissent dans "À venir (7 jours)" avant même
- * qu'une transaction réelle n'ait été créée pour cette date.
+ * Toutes les échéances (hors du réel déjà matérialisé) de chaque abonnement
+ * actif tombant dans [from, to], projetées depuis sa dernière occurrence
+ * connue. Utilisé pour afficher les abonnements à venir avant même qu'une
+ * transaction réelle n'ait été créée pour cette date (ex: "À venir (7
+ * jours)" ou le solde projeté jusqu'au prochain salaire).
  */
-async function getUpcomingRecurringCharges(userId: string, from: string, to: string) {
+async function projectRecurringCharges(userId: string, from: string, to: string) {
   const seriesRows = await db
     .select({ transaction: transactions, category: categories })
     .from(transactions)
@@ -445,13 +447,81 @@ async function getUpcomingRecurringCharges(userId: string, from: string, to: str
     const step = RECURRENCE_STEP[t.recurrence];
     if (!step) continue;
 
-    const nextDate = iso(step(parseISO(t.date)));
-    if (nextDate < from || nextDate > to) continue;
-    if (t.recurrenceEnd && nextDate > t.recurrenceEnd) continue;
-
-    upcoming.push({ transaction: { ...t, date: nextDate }, category });
+    let cursor = parseISO(t.date);
+    while (true) {
+      cursor = step(cursor);
+      const nextDate = iso(cursor);
+      if (nextDate > to) break;
+      if (t.recurrenceEnd && nextDate > t.recurrenceEnd) break;
+      if (nextDate >= from) {
+        upcoming.push({ transaction: { ...t, date: nextDate }, category });
+      }
+    }
   }
   return upcoming;
+}
+
+/**
+ * Prochaine date (strictement future) à laquelle le salaire tombe le
+ * `salaryDay` du mois. Si ce jour est déjà passé ce mois-ci (ou tombe
+ * aujourd'hui), on projette sur le mois suivant. Le jour est plafonné à la
+ * taille du mois (ex: jour 31 → 28/29/30 sur les mois plus courts).
+ */
+function nextSalaryDateISO(today: Date, salaryDay: number): string {
+  const todayStr = iso(today);
+  const clampedDay = (base: Date) => Math.min(salaryDay, getDaysInMonth(base));
+
+  const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const thisMonthDate = iso(
+    new Date(today.getFullYear(), today.getMonth(), clampedDay(thisMonth))
+  );
+  if (thisMonthDate > todayStr) return thisMonthDate;
+
+  const nextMonth = addMonths(thisMonth, 1);
+  return iso(
+    new Date(nextMonth.getFullYear(), nextMonth.getMonth(), clampedDay(nextMonth))
+  );
+}
+
+/**
+ * Solde projeté (règle métier demandée) = solde réel − toutes les dépenses
+ * déjà connues (transactions planifiées + abonnements récurrents projetés)
+ * entre aujourd'hui et la prochaine date de salaire. `null` si l'utilisateur
+ * n'a pas renseigné son jour de versement du salaire.
+ */
+export async function getProjectedBalance(
+  userId: string
+): Promise<{ amount: number; nextSalaryDate: string } | null> {
+  const profile = await getProfile(userId);
+  if (!profile?.salaryDay) return null;
+
+  const today = new Date();
+  const to = nextSalaryDateISO(today, profile.salaryDay);
+  const from = iso(addDays(today, 1));
+
+  const [scheduledExpenses, recurringCharges, realBalance] = await Promise.all([
+    db
+      .select({ amount: transactions.amount })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.type, "expense"),
+          gte(transactions.date, from),
+          lte(transactions.date, to)
+        )
+      ),
+    projectRecurringCharges(userId, from, to),
+    getRealBalance(userId),
+  ]);
+
+  const upcomingExpenses =
+    scheduledExpenses.reduce((sum, r) => sum + num(r.amount), 0) +
+    recurringCharges
+      .filter((r) => r.transaction.type === "expense")
+      .reduce((sum, r) => sum + num(r.transaction.amount), 0);
+
+  return { amount: realBalance - upcomingExpenses, nextSalaryDate: to };
 }
 
 /** Transactions planifiées dans les 7 prochains jours + mensualités de dettes actives. */
@@ -472,7 +542,7 @@ export async function getUpcoming(userId: string) {
           lte(transactions.date, to)
         )
       ),
-    getUpcomingRecurringCharges(userId, from, to),
+    projectRecurringCharges(userId, from, to),
   ]);
 
   const upcomingTx = [...scheduledTx, ...recurringCharges].sort((a, b) =>

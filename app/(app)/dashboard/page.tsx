@@ -12,6 +12,7 @@ import {
   getProfile,
   getMonthSummary,
   getRealBalance,
+  getProjectedBalance,
   getActiveDebtTotals,
   getUpcoming,
   materializeRecurringTransactions,
@@ -22,6 +23,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import { ProfileSettings } from "@/components/dashboard/ProfileSettings";
 
 export const metadata = { title: "Dashboard — BudgetX" };
 export const dynamic = "force-dynamic";
@@ -33,11 +35,12 @@ export default async function DashboardPage() {
 
   await materializeRecurringTransactions(userId);
 
-  const [profile, summary, realBalance, debtTotals, upcoming] =
+  const [profile, summary, realBalance, projectedBalance, debtTotals, upcoming] =
     await Promise.all([
       getProfile(userId),
       getMonthSummary(userId),
       getRealBalance(userId),
+      getProjectedBalance(userId),
       getActiveDebtTotals(userId),
       getUpcoming(userId),
     ]);
@@ -54,6 +57,7 @@ export default async function DashboardPage() {
           <Button variant="secondary" size="sm" asChild>
             <a href="/analytics">Analyses</a>
           </Button>
+          <ProfileSettings profile={profile} />
           <form
             action={async () => {
               "use server";
@@ -85,6 +89,25 @@ export default async function DashboardPage() {
               {formatCHF(summary.netBalance)}
             </span>
           </p>
+          {projectedBalance ? (
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Solde projeté au {formatDate(projectedBalance.nextSalaryDate)} :{" "}
+              <span
+                className={
+                  projectedBalance.amount >= 0
+                    ? "text-primary"
+                    : "text-destructive"
+                }
+              >
+                {formatCHF(projectedBalance.amount)}
+              </span>
+            </p>
+          ) : (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Renseignez votre jour de salaire dans les paramètres pour voir
+              le solde projeté.
+            </p>
+          )}
         </CardContent>
       </Card>
 
