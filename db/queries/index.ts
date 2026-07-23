@@ -419,24 +419,65 @@ export async function getActiveDebtTotals(userId: string) {
   return { totalRemaining, pursuitsRemaining, count: rows.length };
 }
 
+/**
+ * Prochaine échéance (hors du réel déjà matérialisé) de chaque abonnement
+ * actif, projetée depuis sa dernière occurrence connue. Utilisé pour que les
+ * abonnements à venir apparaissent dans "À venir (7 jours)" avant même
+ * qu'une transaction réelle n'ait été créée pour cette date.
+ */
+async function getUpcomingRecurringCharges(userId: string, from: string, to: string) {
+  const seriesRows = await db
+    .select({ transaction: transactions, category: categories })
+    .from(transactions)
+    .innerJoin(categories, eq(transactions.categoryId, categories.id))
+    .where(and(eq(transactions.userId, userId), isNotNull(transactions.seriesId)))
+    .orderBy(desc(transactions.date));
+
+  const latestBySeries = new Map<string, (typeof seriesRows)[number]>();
+  for (const row of seriesRows) {
+    const key = row.transaction.seriesId as string;
+    if (!latestBySeries.has(key)) latestBySeries.set(key, row);
+  }
+
+  const upcoming: (typeof seriesRows)[number][] = [];
+  for (const { transaction: t, category } of latestBySeries.values()) {
+    if (!t.isRecurring || !t.recurrence) continue;
+    const step = RECURRENCE_STEP[t.recurrence];
+    if (!step) continue;
+
+    const nextDate = iso(step(parseISO(t.date)));
+    if (nextDate < from || nextDate > to) continue;
+    if (t.recurrenceEnd && nextDate > t.recurrenceEnd) continue;
+
+    upcoming.push({ transaction: { ...t, date: nextDate }, category });
+  }
+  return upcoming;
+}
+
 /** Transactions planifiées dans les 7 prochains jours + mensualités de dettes actives. */
 export async function getUpcoming(userId: string) {
   const today = new Date();
   const from = iso(addDays(today, 1));
   const to = iso(addDays(today, 7));
 
-  const upcomingTx = await db
-    .select({ transaction: transactions, category: categories })
-    .from(transactions)
-    .innerJoin(categories, eq(transactions.categoryId, categories.id))
-    .where(
-      and(
-        eq(transactions.userId, userId),
-        gte(transactions.date, from),
-        lte(transactions.date, to)
-      )
-    )
-    .orderBy(asc(transactions.date));
+  const [scheduledTx, recurringCharges] = await Promise.all([
+    db
+      .select({ transaction: transactions, category: categories })
+      .from(transactions)
+      .innerJoin(categories, eq(transactions.categoryId, categories.id))
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          gte(transactions.date, from),
+          lte(transactions.date, to)
+        )
+      ),
+    getUpcomingRecurringCharges(userId, from, to),
+  ]);
+
+  const upcomingTx = [...scheduledTx, ...recurringCharges].sort((a, b) =>
+    a.transaction.date < b.transaction.date ? -1 : 1
+  );
 
   const activeDebtsWithPayment = await db
     .select()
